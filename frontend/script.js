@@ -244,10 +244,10 @@ function createRandomPayload(size) {
   return payload;
 }
 
-function uploadOneSample(size, onProgress) {
+
+function uploadOneSample(size, onProgress, payload) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const payload = createRandomPayload(size);
 
     xhr.open("POST", `${API_BASE}/api/upload`);
 
@@ -300,6 +300,7 @@ function uploadOneSample(size, onProgress) {
   });
 }
 
+
 async function measureUpload() {
   statusText.textContent = "Measuring upload speed...";
 
@@ -308,29 +309,37 @@ async function measureUpload() {
     0
   );
 
-  // Track progress separately for each request.
   const uploadedByRequest = UPLOAD_SIZES.map(() => 0);
 
-  // Prepare payloads and start uploads together.
+  // Prepare random data BEFORE starting the timer.
+  const payloads = UPLOAD_SIZES.map((size) =>
+    createRandomPayload(size)
+  );
+
+  // Start measuring after payload preparation.
   const start = performance.now();
 
   const results = await Promise.all(
     UPLOAD_SIZES.map((size, index) =>
-      uploadOneSample(size, (loaded) => {
-        uploadedByRequest[index] = loaded;
+      uploadOneSample(
+        size,
+        (loaded) => {
+          uploadedByRequest[index] = loaded;
 
-        const currentTotal = uploadedByRequest.reduce(
-          (sum, bytes) => sum + bytes,
-          0
-        );
+          const currentTotal = uploadedByRequest.reduce(
+            (sum, bytes) => sum + bytes,
+            0
+          );
 
-        uploadUsage.textContent =
-          `Uploaded: ${bytesToMB(currentTotal).toFixed(2)} MB`;
+          uploadUsage.textContent =
+            `Uploaded: ${bytesToMB(currentTotal).toFixed(2)} MB`;
 
-        updateProgress(
-          60 + (currentTotal / totalPlanned) * 40
-        );
-      })
+          updateProgress(
+            60 + (currentTotal / totalPlanned) * 40
+          );
+        },
+        payloads[index]
+      )
     )
   );
 
@@ -353,6 +362,8 @@ async function measureUpload() {
 
   return speed;
 }
+
+
 
 // -----------------------------------------------
 // MAIN TEST CONTROLLER
