@@ -96,3 +96,25 @@ async def upload(request: Request):
         "status": "success",
         "bytes_received": total_bytes
     }
+
+
+from pathlib import Path
+from fastapi.responses import FileResponse
+
+# Locate the frontend folder
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+
+# Serve the website at the main URL
+@app.get("/", include_in_schema=False)
+async def serve_frontend():
+    return FileResponse(FRONTEND_DIR / "index.html")
+
+# Serve the frontend CSS
+@app.get("/style.css", include_in_schema=False)
+async def serve_css():
+    return FileResponse(FRONTEND_DIR / "style.css")
+
+# Serve the frontend JavaScript
+@app.get("/script.js", include_in_schema=False)
+async def serve_js():
+    return FileResponse(FRONTEND_DIR / "script.js")
