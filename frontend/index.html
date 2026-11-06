@@ -1,46 +1,69 @@
 
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NetPulse - Internet Speed Test</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="script.js" defer></script>
+  <meta name="theme-color" content="#171316">
+  <title>How Fast? | Internet Speed Test</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/script.js" defer></script>
 </head>
 <body>
   <main class="container">
-    <h1>NetPulse</h1>
-    <p>Test your internet connection</p>
 
-    <button id="startBtn">Start Test</button>
+    <header class="hero">
+      <div class="logo-icon" aria-hidden="true">◴</div>
+      <h1>How <span>Fast?</span></h1>
+      <p class="subtitle">Test your internet connection</p>
 
-    <p id="status">Ready to test</p>
-	<div class="progress-container">
-	  <div id="progressBar"></div>
-	</div>
-	<p id="progressText">0%</p>
-    <section class="results">
-      <div>
+      <button id="startBtn" type="button">
+        <span aria-hidden="true">▶</span> Start Test
+      </button>
+
+      <p id="status" role="status" aria-live="polite">
+        Ready to test
+      </p>
+    </header>
+
+    <section class="progress-section" aria-label="Test progress">
+      <div class="progress-container">
+        <div id="progressBar"></div>
+      </div>
+      <p id="progressText">0%</p>
+    </section>
+
+    <section class="results" aria-label="Speed test results">
+      <article class="result-card">
+        <div class="card-icon" aria-hidden="true">◉</div>
         <h2>Ping</h2>
         <p id="ping">-- ms</p>
-      </div>
+      </article>
 
-      <div>
+      <article class="result-card">
+        <div class="card-icon" aria-hidden="true">↓</div>
         <h2>Download</h2>
         <p id="download">-- Mbps</p>
-      </div>
+      </article>
 
-      <div>
+      <article class="result-card">
+        <div class="card-icon" aria-hidden="true">↑</div>
         <h2>Upload</h2>
         <p id="upload">-- Mbps</p>
-      </div>
+      </article>
     </section>
-   	<p id="downloadUsage">Downloaded: 0.00 MB</p>
-	<p id="uploadUsage">Uploaded: 0.00 MB</p>
-	<p id="testDuration">Test duration: -- seconds</p>
+
+    <section class="details" aria-label="Test statistics">
+      <p id="downloadUsage">Downloaded: 0.00 MB</p>
+      <p id="uploadUsage">Uploaded: 0.00 MB</p>
+      <p id="testDuration">Test duration: -- seconds</p>
+    </section>
+
+    <footer>
+      <span class="footer-dot"></span>
+      HOW FAST? — NETWORK PERFORMANCE TEST
+    </footer>
+
   </main>
 </body>
 </html>
-
