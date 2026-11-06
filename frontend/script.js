@@ -1,14 +1,15 @@
 
 "use strict";
 
-// CS468 - Internet Speed Testing
-// Frontend measurement implementation
+// CS468 - NetPulse Internet Speed Testing
+// Parallel transfer measurement with controlled data usage.
 
 const API_BASE = window.location.origin;
 
 const DOWNLOAD_SIZES = [1000000, 2000000, 4000000];
 const UPLOAD_SIZES = [500000, 1000000, 2000000];
-const REQUEST_TIMEOUT_MS = 15000;
+
+const REQUEST_TIMEOUT_MS = 20000;
 
 const startButton = document.getElementById("startBtn");
 const statusText = document.getElementById("status");
@@ -21,10 +22,15 @@ const downloadUsage = document.getElementById("downloadUsage");
 const uploadUsage = document.getElementById("uploadUsage");
 const testDuration = document.getElementById("testDuration");
 
+// -----------------------------------------------
+// HELPERS
+// -----------------------------------------------
+
 function calculateMbps(bytes, milliseconds) {
   if (milliseconds <= 0) {
     throw new Error("Invalid measurement duration");
   }
+
   return (bytes * 8 * 1000) / (milliseconds * 1000000);
 }
 
@@ -49,6 +55,7 @@ function median(numbers) {
 
 function updateProgress(percent) {
   const value = Math.max(0, Math.min(100, percent));
+
   progressBar.style.width = `${value}%`;
   progressText.textContent = `${value.toFixed(0)}%`;
 }
@@ -57,19 +64,26 @@ function resetResults() {
   pingResult.textContent = "-- ms";
   downloadResult.textContent = "-- Mbps";
   uploadResult.textContent = "-- Mbps";
+
   downloadUsage.textContent = "Downloaded: 0.00 MB";
   uploadUsage.textContent = "Uploaded: 0.00 MB";
   testDuration.textContent = "Test duration: -- seconds";
+
   updateProgress(0);
 }
 
+// -----------------------------------------------
 // PING MEASUREMENT
+// -----------------------------------------------
+
 async function measurePing() {
   statusText.textContent = "Measuring ping...";
+
   const measurements = [];
 
   for (let i = 0; i < 5; i++) {
     const controller = new AbortController();
+
     const timeout = setTimeout(
       () => controller.abort(),
       REQUEST_TIMEOUT_MS
@@ -93,7 +107,9 @@ async function measurePing() {
       await response.arrayBuffer();
 
       const elapsed = performance.now() - start;
+
       measurements.push(elapsed);
+
       updateProgress(((i + 1) / 5) * 20);
     } finally {
       clearTimeout(timeout);
@@ -101,13 +117,19 @@ async function measurePing() {
   }
 
   const result = median(measurements);
+
   pingResult.textContent = `${result.toFixed(1)} ms`;
+
   return result;
 }
 
+// -----------------------------------------------
 // DOWNLOAD MEASUREMENT
+// -----------------------------------------------
+
 async function downloadOneSample(size, onBytes) {
   const controller = new AbortController();
+
   const timeout = setTimeout(
     () => controller.abort(),
     REQUEST_TIMEOUT_MS
@@ -116,8 +138,6 @@ async function downloadOneSample(size, onBytes) {
   let received = 0;
 
   try {
-    const start = performance.now();
-
     const response = await fetch(
       `${API_BASE}/api/download?size=${size}`,
       {
@@ -134,13 +154,14 @@ async function downloadOneSample(size, onBytes) {
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+
+      if (done) {
+        break;
+      }
 
       received += value.byteLength;
       onBytes(value.byteLength);
     }
-
-    const elapsed = performance.now() - start;
 
     if (received !== size) {
       throw new Error(
@@ -148,7 +169,7 @@ async function downloadOneSample(size, onBytes) {
       );
     }
 
-    return { bytes: received, milliseconds: elapsed };
+    return received;
   } finally {
     clearTimeout(timeout);
   }
@@ -158,16 +179,18 @@ async function measureDownload() {
   statusText.textContent = "Measuring download speed...";
 
   const totalPlanned = DOWNLOAD_SIZES.reduce(
-    (sum, size) => sum + size, 0
+    (sum, size) => sum + size,
+    0
   );
 
   let totalReceived = 0;
-  let totalMilliseconds = 0;
 
-  for (const size of DOWNLOAD_SIZES) {
-    const sample = await downloadOneSample(
-      size,
-      (chunkBytes) => {
+  // Start all download requests together.
+  const start = performance.now();
+
+  const results = await Promise.all(
+    DOWNLOAD_SIZES.map((size) =>
+      downloadOneSample(size, (chunkBytes) => {
         totalReceived += chunkBytes;
 
         downloadUsage.textContent =
@@ -176,38 +199,60 @@ async function measureDownload() {
         updateProgress(
           20 + (totalReceived / totalPlanned) * 40
         );
-      }
-    );
-
-    totalMilliseconds += sample.milliseconds;
-  }
-
-  const speed = calculateMbps(
-    totalReceived,
-    totalMilliseconds
+      })
+    )
   );
 
+  // Measure the whole concurrent transfer interval.
+  const elapsed = performance.now() - start;
+
+  const verifiedBytes = results.reduce(
+    (sum, bytes) => sum + bytes,
+    0
+  );
+
+  if (verifiedBytes !== totalPlanned) {
+    throw new Error("Incomplete download measurement");
+  }
+
+  const speed = calculateMbps(verifiedBytes, elapsed);
+
   downloadResult.textContent = `${speed.toFixed(2)} Mbps`;
+
+  updateProgress(60);
+
   return speed;
 }
 
+// -----------------------------------------------
 // UPLOAD MEASUREMENT
+// -----------------------------------------------
+
+function createRandomPayload(size) {
+  const payload = new Uint8Array(size);
+
+  // crypto.getRandomValues has a 65536-byte limit.
+  for (let offset = 0; offset < size; offset += 65536) {
+    crypto.getRandomValues(
+      payload.subarray(
+        offset,
+        Math.min(offset + 65536, size)
+      )
+    );
+  }
+
+  return payload;
+}
+
 function uploadOneSample(size, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const payload = new Uint8Array(size);
-
-    // Generate incompressible test data in safe chunks.
-    for (let offset = 0; offset < size; offset += 65536) {
-      crypto.getRandomValues(
-        payload.subarray(offset, Math.min(offset + 65536, size))
-      );
-    }
-
-    let start = 0;
+    const payload = createRandomPayload(size);
 
     xhr.open("POST", `${API_BASE}/api/upload`);
+
     xhr.timeout = REQUEST_TIMEOUT_MS;
+
     xhr.setRequestHeader(
       "Content-Type",
       "application/octet-stream"
@@ -215,13 +260,11 @@ function uploadOneSample(size, onProgress) {
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
-        onProgress(event.loaded);
+        onProgress(Math.min(event.loaded, size));
       }
     };
 
     xhr.onload = () => {
-      const elapsed = performance.now() - start;
-
       if (xhr.status < 200 || xhr.status >= 300) {
         reject(new Error(`Upload HTTP ${xhr.status}`));
         return;
@@ -235,17 +278,24 @@ function uploadOneSample(size, onProgress) {
         }
 
         onProgress(size);
-        resolve({ bytes: size, milliseconds: elapsed });
+        resolve(size);
       } catch (error) {
         reject(error);
       }
     };
 
-    xhr.onerror = () => reject(new Error("Upload network error"));
-    xhr.ontimeout = () => reject(new Error("Upload timed out"));
-    xhr.onabort = () => reject(new Error("Upload aborted"));
+    xhr.onerror = () => {
+      reject(new Error("Upload network error"));
+    };
 
-    start = performance.now();
+    xhr.ontimeout = () => {
+      reject(new Error("Upload timed out"));
+    };
+
+    xhr.onabort = () => {
+      reject(new Error("Upload aborted"));
+    };
+
     xhr.send(payload);
   });
 }
@@ -254,17 +304,25 @@ async function measureUpload() {
   statusText.textContent = "Measuring upload speed...";
 
   const totalPlanned = UPLOAD_SIZES.reduce(
-    (sum, size) => sum + size, 0
+    (sum, size) => sum + size,
+    0
   );
 
-  let completedBytes = 0;
-  let totalMilliseconds = 0;
+  // Track progress separately for each request.
+  const uploadedByRequest = UPLOAD_SIZES.map(() => 0);
 
-  for (const size of UPLOAD_SIZES) {
-    const sample = await uploadOneSample(
-      size,
-      (loaded) => {
-        const currentTotal = completedBytes + loaded;
+  // Prepare payloads and start uploads together.
+  const start = performance.now();
+
+  const results = await Promise.all(
+    UPLOAD_SIZES.map((size, index) =>
+      uploadOneSample(size, (loaded) => {
+        uploadedByRequest[index] = loaded;
+
+        const currentTotal = uploadedByRequest.reduce(
+          (sum, bytes) => sum + bytes,
+          0
+        );
 
         uploadUsage.textContent =
           `Uploaded: ${bytesToMB(currentTotal).toFixed(2)} MB`;
@@ -272,25 +330,37 @@ async function measureUpload() {
         updateProgress(
           60 + (currentTotal / totalPlanned) * 40
         );
-      }
-    );
-
-    completedBytes += sample.bytes;
-    totalMilliseconds += sample.milliseconds;
-  }
-
-  const speed = calculateMbps(
-    completedBytes,
-    totalMilliseconds
+      })
+    )
   );
 
+  const elapsed = performance.now() - start;
+
+  const verifiedBytes = results.reduce(
+    (sum, bytes) => sum + bytes,
+    0
+  );
+
+  if (verifiedBytes !== totalPlanned) {
+    throw new Error("Incomplete upload measurement");
+  }
+
+  const speed = calculateMbps(verifiedBytes, elapsed);
+
   uploadResult.textContent = `${speed.toFixed(2)} Mbps`;
+
+  updateProgress(100);
+
   return speed;
 }
 
+// -----------------------------------------------
 // MAIN TEST CONTROLLER
+// -----------------------------------------------
+
 async function runSpeedTest() {
   startButton.disabled = true;
+
   resetResults();
 
   const testStart = performance.now();
@@ -301,10 +371,13 @@ async function runSpeedTest() {
     await measureUpload();
 
     updateProgress(100);
+
     statusText.textContent = "Speed test completed!";
   } catch (error) {
     console.error("Speed test failed:", error);
-    statusText.textContent = `Test failed: ${error.message}`;
+
+    statusText.textContent =
+      `Test failed: ${error.message}`;
   } finally {
     const elapsed = (performance.now() - testStart) / 1000;
 
@@ -316,4 +389,3 @@ async function runSpeedTest() {
 }
 
 startButton.addEventListener("click", runSpeedTest);
-s
